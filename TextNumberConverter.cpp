@@ -1,4 +1,7 @@
 #include "TextNumberConverter.h"
+#include <random>
+#include <windows.h>
+#include <algorithm>
 
 std::vector<std::string> convert(std::string *lines)
 {
@@ -72,17 +75,61 @@ std::map<std::string, char> createDict() {
 		" _|\n"
 		"   ";
 	std::map<std::string, char> dict;
-	dict[zero] = '0';
-	dict[one] = '1';
-	dict[two] = '2';
+	dict[zero]  = '0';
+	dict[one]   = '1';
+	dict[two]   = '2';
 	dict[three] = '3';
-	dict[four] = '4';
-	dict[five] = '5';
-	dict[six] = '6';
+	dict[four]  = '4';
+	dict[five]  = '5';
+	dict[six]   = '6';
 	dict[seven] = '7';
 	dict[eight] = '8';
-	dict[nine] = '9';
+	dict[nine]  = '9';
 	return dict;
+}
+
+
+void checksum(std::string code,bool outFile, std::ofstream& outfile) {
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	int counter = 9;
+	int sum = 0;
+	int checksum = 0;
+	for each (char var in code)
+	{
+		sum += counter * (var - '0');
+		counter--;
+	}
+	if (sum % 11 == 0) {
+		if (outFile) {
+			outfile << code << std::endl;	
+		}
+		else {
+			SetConsoleTextAttribute(hConsole, 2);
+			std::cout << code << std::endl;
+		}
+	}
+	else {
+		if (outFile) {
+			outfile << code << ": " << "ERR" << std::endl;
+		}
+		else {
+			SetConsoleTextAttribute(hConsole, 4);
+			std::cout << code << ": " << "ERR" << std::endl;
+		}
+	}
+	SetConsoleTextAttribute(hConsole, 7);
+
+}
+
+std::string test_generator() {
+	std::string num = "";
+	std::random_device rd; // obtain a random number from hardware
+	std::mt19937 eng(rd()); // seed the generator
+	std::uniform_int_distribution<> distr(0, 9); // define the range
+	for (int n = 0; n < 9; ++n) {
+		num += ('0' + distr(eng));
+	}
+	return num;
 }
 
 void convertTextNumbers(std::string infile_path, std::string outfile_path) {
@@ -140,10 +187,9 @@ void convertTextNumbers(std::string infile_path, std::string outfile_path) {
 		if (counter == 4) {
 			counter = 0;
 			std::vector<std::string>temp = convert(numbers);
-			vec_numb.insert(std::end(vec_numb), std::begin(temp), std::end(temp));
-			numbers_size.push_back(temp.size());
-			if (temp.size() < 9) {
-				break;
+			if (temp.size() == 9) {
+				numbers_size.push_back(temp.size());
+				vec_numb.insert(std::end(vec_numb), std::begin(temp), std::end(temp));
 			}
 		}
 	}
@@ -151,26 +197,111 @@ void convertTextNumbers(std::string infile_path, std::string outfile_path) {
 
 	int index = 0;
 	std::string out = "";
+	std::vector<std::string> codes;
+	std::vector<char> guess;
+	bool corrupted = false;
+	int matching = 0;
+	int counter_err = 0;
+	bool repair = false;
 	for each (std::string var in vec_numb)
 	{
 		if (dict.find(var) != dict.end()) {
 			out += dict[var];
 		}
 		else {
-			out += 'e';
+			counter_err++;
+			repair = false;
+			for (const auto &p : dict)
+			{
+				matching = 0;
+				for (int i = 0; i < p.first.size(); i++) {
+					if (p.first[i] != var[i]) {
+						matching++;
+						if (matching > 1) {
+							break;
+						}
+					}
+				}
+				if (matching < 2) {
+					guess.push_back(p.second);
+					repair = true;
+				}
+			}
+			if (!repair || counter_err > 1) {
+				corrupted = true;
+			}
+			out += '?';
+
 		}
 		if (numbers_size[index] == out.size())
 		{
 			if (outFile) {
-				outfile << out << std::endl;
+				if (corrupted) {
+					outfile << out << ": " << "ILL" << std::endl;
+				}
+				else {
+					if (guess.size() > 0) {
+						outfile << out << ": ";
+						std::string tmp;
+						for each (auto c in guess)
+						{
+							tmp = out;
+							std::replace(tmp.begin(), tmp.end(), '?', c);
+							outfile << tmp << " ";
+							codes.push_back(tmp);
+						}
+					}
+					else {
+						codes.push_back(out);
+					}
+					outfile << std::endl;
+				}
 			}
 			else {
-				std::cout << out << std::endl;
+				if (corrupted){
+					HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+					SetConsoleTextAttribute(hConsole, 6);
+					std::cout << out << ": " << "ILL" << std::endl;
+					SetConsoleTextAttribute(hConsole, 7);
+				}
+				else {
+					if (guess.size() > 0) {
+						HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+						SetConsoleTextAttribute(hConsole, 3);
+						std::cout << out << ": ";
+						std::string tmp;
+						for each (auto c in guess)
+						{
+							tmp = out;
+							std::replace(tmp.begin(), tmp.end(), '?', c);
+							std::cout << tmp << " ";
+							codes.push_back(tmp);
+						}
+						SetConsoleTextAttribute(hConsole, 7);
+					}
+					else {
+						codes.push_back(out);
+					}
+					std::cout << std::endl;
+				}
 			}
 			index++;
 			out = "";
+			corrupted = false;
+			counter_err = 0;
+			guess.clear();
 		}
 	}
+
+	//for (int i = 0; i < 200; i++) {
+	//	codes.push_back(test_generator());
+	//}
+
+	for each (std::string var in codes)
+	{
+		checksum(var, outFile, outfile);
+	}
+
 	if (outFile) {
 		outfile.close();
 		std::cout << "Saved to file " << outfile_path << std::endl;
